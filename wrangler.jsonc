@@ -1,0 +1,6 @@
+// Cloudflare deployment: a static site, no server code. Everything in public/ is served as-is.
+{
+  "name": "song-sketch",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./public" }
+}
