@@ -1,0 +1,13 @@
+{
+  "name": "song-sketch",
+  "private": true,
+  "type": "module",
+  "description": "Listens to music playing in a browser tab and sketches key, tempo, chords and sections.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "evaluate": "node test/evaluate.mjs"
+  },
+  "devDependencies": {
+    "essentia.js": "0.1.3"
+  }
+}

@@ -4,19 +4,141 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Song Sketch</title>
+<meta name="description" content="Listens to the song playing in a browser tab and sketches its key, tempo, chords and sections as it plays.">
 <style>
-  :root { --bg: #fafaf7; --fg: #1d1d1b; --muted: #6b6b66; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ecece8; --muted: #9a9a94; } }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg);
-         font: 16px/1.5 system-ui, -apple-system, sans-serif; padding: 16px; box-sizing: border-box; }
-  p { color: var(--muted); }
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --fg: #1c1c1a; --muted: #6a6964; --line: #e2e0d8;
+    --accent: #c2410c; --accent-soft: #fbe5d8; --tonic: #c2410c; --scale: #3f3f3b; --chord: #0e7490;
+    --good: #15803d; --warn: #a16207; --faint: 0.45;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --card: #1e1e1c; --fg: #ecebe6; --muted: #9c9b94; --line: #33322e;
+      --accent: #f97316; --accent-soft: #3b2416; --tonic: #fb923c; --scale: #d6d5cf; --chord: #22d3ee;
+      --good: #4ade80; --warn: #facc15;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141413; --card: #1e1e1c; --fg: #ecebe6; --muted: #9c9b94; --line: #33322e;
+    --accent: #f97316; --accent-soft: #3b2416; --tonic: #fb923c; --scale: #d6d5cf; --chord: #22d3ee;
+    --good: #4ade80; --warn: #facc15;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .status { font-size: 13px; color: var(--muted); padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; }
+  .status.live { color: var(--good); border-color: var(--good); }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button.small { padding: 3px 9px; font-size: 13px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  .hint b { color: var(--fg); }
+  .error { color: var(--accent); font-size: 14px; margin: 0 0 12px; white-space: pre-wrap; }
+  .grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .span2 { grid-column: 1 / -1; }
+  .big { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; vertical-align: middle; margin-left: 8px; background: var(--accent-soft); color: var(--accent); }
+  .badge.clear { background: transparent; color: var(--good); border: 1px solid var(--good); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+  .chip { min-width: 34px; text-align: center; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); font-weight: 600; font-size: 14px; }
+  .chip.tonic { background: var(--tonic); border-color: var(--tonic); color: #fff; }
+  .chip.inchord { outline: 2px solid var(--chord); outline-offset: 1px; }
+  .fret-wrap { overflow-x: auto; }
+  svg.fretboard { display: block; width: 100%; max-width: 820px; min-width: 520px; height: auto; }
+  .pulse { display: flex; gap: 10px; margin: 10px 0 4px; }
+  .dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); transition: background 60ms; }
+  .dot.down { border-color: var(--accent); }
+  .dot.on { background: var(--fg); border-color: var(--fg); }
+  .dot.down.on { background: var(--accent); border-color: var(--accent); }
+  .movement { display: flex; flex-wrap: wrap; gap: 6px 4px; align-items: baseline; font-size: 20px; font-weight: 600; }
+  .movement .arrow { color: var(--muted); font-weight: 400; }
+  .movement .len { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 2px; }
+  .movement .cur { color: var(--chord); }
+  .chordnow { font-size: 64px; font-weight: 700; color: var(--chord); line-height: 1.1; margin-top: 8px; min-height: 72px; }
+  .row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .chart { display: grid; grid-template-columns: 28px repeat(4, minmax(0, 1fr)); gap: 6px; align-items: stretch; }
+  .sec { font-weight: 700; color: var(--accent); font-size: 13px; padding-top: 10px; text-align: center; }
+  .bar { border: 1px solid var(--line); border-radius: 8px; padding: 8px 8px; min-height: 44px; font-weight: 600; font-size: 17px; display: flex; gap: 10px; align-items: center; }
+  .bar .half { flex: 1; }
+  .bar.low { opacity: var(--faint); }
+  .bar.latest { border-color: var(--chord); box-shadow: inset 0 0 0 1px var(--chord); }
+  .bar .n { color: var(--muted); font-weight: 400; font-size: 11px; align-self: flex-start; }
+  .bar.pickup { font-size: 13px; color: var(--muted); }
+  .empty { color: var(--muted); font-size: 14px; }
+  .sections { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .section { border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
+  .section b { color: var(--accent); }
+  footer { color: var(--muted); font-size: 12px; margin: 18px 0 8px; }
+  footer a { color: inherit; }
 </style>
 </head>
 <body>
-  <main>
+<div class="wrap">
+  <header>
     <h1>Song Sketch</h1>
-    <p>Listens to what's playing and sketches key, tempo, chords and sections. First version coming soon.</p>
-    <p><small>Deploy check: build 3</small></p>
-  </main>
+    <span id="status" class="status">idle</span>
+  </header>
+
+  <div class="controls">
+    <button id="btnTab" class="primary">Listen to a tab</button>
+    <button id="btnMic">Microphone</button>
+    <button id="btnFile">Audio file…</button>
+    <input id="fileInput" type="file" accept="audio/*" hidden>
+    <button id="btnNew" disabled>New song</button>
+    <button id="btnStop" disabled>Stop</button>
+  </div>
+  <p class="hint">Start the song in another tab (YouTube Music), click <b>Listen to a tab</b>, pick that tab and make sure
+    <b>Also share tab audio</b> is switched on. The sound keeps playing as normal; nothing is recorded or uploaded.</p>
+  <p id="error" class="error" hidden></p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Chord now</h2>
+      <div class="chordnow" id="chordNow">—</div>
+      <div class="sub" id="chordTones"></div>
+      <h2 style="margin-top:16px">Movement</h2>
+      <div id="movement" class="movement"><span class="empty">The chord changes appear here as the song plays.</span></div>
+    </section>
+
+    <section class="card">
+      <h2>Pulse</h2>
+      <div class="row"><span class="big" id="bpm">—</span><span class="sub">BPM</span>
+        <button class="small" id="btnHalf" title="Detected tempo is twice too fast">½×</button>
+        <button class="small" id="btnDouble" title="Detected tempo is half too slow">2×</button></div>
+      <div class="pulse" id="pulse"><div class="dot down"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+      <div class="sub" id="meter">4/4 assumed</div>
+      <div class="sub" id="tuning" style="margin-top:10px"></div>
+    </section>
+
+    <section class="card span2">
+      <div class="row" style="justify-content: space-between"><h2>Chord chart</h2>
+        <button class="small" id="btnCopy" disabled>Copy chart</button></div>
+      <div id="chart" class="chart"><div class="empty" style="grid-column: 1 / -1">Bars appear here once the beat is found.</div></div>
+      <div id="sections" class="sections"></div>
+    </section>
+
+    <section class="card span2">
+      <h2>Notes that fit right now</h2>
+      <div id="scaleChips" class="chips"><span class="empty">Listening for about 15 seconds first.</span></div>
+      <div class="fret-wrap"><svg id="fretboard" class="fretboard" viewBox="0 0 760 170" role="img" aria-label="Notes that fit, on the fretboard"></svg></div>
+      <div id="tonalityDetail" class="sub"></div>
+    </section>
+  </div>
+
+  <footer>
+    Everything runs in this browser tab; nothing is recorded or uploaded. Sketches are best guesses: tempo is usually right, chords are
+    good on held chords and weaker on riffs and funk scratching, and section letters only appear once parts of the song repeat.
+    Analysis uses <a href="https://mtg.github.io/essentia.js/">essentia.js</a> (Music Technology Group, Universitat Pompeu Fabra, AGPL-3.0).
+  </footer>
+</div>
+<script type="module" src="app.js"></script>
 </body>
 </html>
